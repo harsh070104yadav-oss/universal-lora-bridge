@@ -1,49 +1,38 @@
 # Universal LoRA Bridge
 
-**Train a LoRA on any model. Use it on any other model.**
+Rewrites a LoRA from one architecture into another’s matrices.
 
-Experimental research project for transferring LoRA adapters across heterogeneous LLM architectures.
+A Qwen2.5 LoRA is mapped onto Kimi K3 instead of being dropped:
 
-## Status
+| Qwen module | Kimi K3 module |
+| --- | --- |
+| `q_proj` | `q_a_proj` and `q_b_proj` |
+| `k_proj` + `v_proj` | `kv_a_proj_with_mqa` and `kv_b_proj` |
+| `o_proj` | `o_proj` |
+| `gate_proj`, `up_proj`, `down_proj` | `mlp.gate_proj`, `mlp.up_proj`, `mlp.down_proj` |
 
-Early prototype / research implementation. Not production-ready.
+An unknown future matrix is filled from the source MLP LoRAs.
 
-## Motivation
+## What this is
 
-Standard LoRA adapters are tightly coupled to the exact model they were trained on due to architecture and dimension mismatches. This project explores practical implementations of recent research that aims to break that limitation.
+`src/bridge/` is the tested implementation.
 
-### Key Research
+- `transplantDelta` expresses the update in the source weight’s principal subspace and rebuilds that coefficient in the target subspace.
+- `runBridge` plans every target module, including KDA / MLA layouts and extra names on an upcoming model.
+- Same-family pairs (Llama → Llama) are marked `transferable`. Qwen → Kimi K3 is marked `bridged`.
 
-- **Cross-LoRA** (Xia et al., 2025) — Data-free, training-free transfer via SVD subspace alignment (arXiv:2508.05232)
-- **Trans-LoRA** (Wang et al., 2024) — Synthetic data + distillation for near-lossless transfer (NeurIPS 2024)
-- **LoRA-X** — Training-free cross-model adaptation
-- **Universal-Adopter LoRA (UAL)** — Architecture-agnostic intermediate representation
+The bench uses a scaled stand-in of each hidden size. The module map is the same one you would apply to full weights. This repository does not ship Kimi or Qwen checkpoints, and a bridged adapter is not a LoRA that was trained on the target.
 
-## Goals
+## Check
 
-1. Working implementation of Cross-LoRA-style subspace alignment for common model families (Llama, Qwen, Gemma, etc.).
-2. Support transferring LoRAs between models of different sizes.
-3. Both data-free (weight-space) and data-assisted (synthetic data) modes.
-4. Document limitations with highly divergent architectures (e.g. standard Transformer → Kimi K3-style KDA + Latent MoE).
+Requires Node 22.
 
-## Planned Structure
-
-```
-universal-lora-bridge/
-├── README.md
-├── requirements.txt
-├── transfer.py              # Main transfer script
-├── src/
-│   ├─── cross_lora.py       # Subspace alignment (SVD)
-│   ├─── align.py            # Weight space alignment utilities
-│   └─── utils.py
-└── examples/
+```bash
+node --experimental-strip-types --test src/bridge/bridge.test.ts
 ```
 
-## Disclaimer
-
-Transfer quality varies significantly with architectural similarity. Extreme mismatches are expected to perform poorly or fail. This is research software.
+Eight checks, including “Qwen LoRA fills every Kimi K3 module” and “an upcoming model with a new matrix still receives the LoRA.”
 
 ## License
 
-Apache 2.0
+Apache-2.0
